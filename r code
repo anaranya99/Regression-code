@@ -1,0 +1,235 @@
+data=read.csv("C:/Users/DELL/Desktop/regression work.csv")
+data
+###missing obs check###
+sum(is.na(data))
+##categorical value encoding###
+male=vector()
+for (i in 1:nrow(data))
+{if (data[,'sex'][i]=='male')
+{male[i]=1}
+  else {male[i]=0}
+  }
+smoker=vector()
+for (i in 1:nrow(data))
+{if (data[,'smoker'][i]=='yes')
+ {smoker[i]=1}
+  else {smoker[i]=0}
+  }
+southwest=vector() 
+for (i in 1:nrow(data)) 
+ { if (data[,"region"][i]=="southwest")
+{ southwest[i]=1 } 
+  else {southwest[i]=0} 
+  }
+southeast=vector() 
+for (i in 1:nrow(data)) 
+{ if (data[,"region"][i]=="southeast") 
+{ southeast[i]=1 } 
+  else { southeast[i]=0 } 
+  }
+northwest=vector() 
+for (i in 1:nrow(data)) 
+{ if (data[,"region"][i]=="northwest") 
+{ northwest[i]=1 } 
+  else { northwest[i]=0 } 
+  }
+data$male=male
+data$smokes=smoker
+data$southwest=southwest
+data$southeast=southeast
+data$northwest=northwest
+head(data)
+Data1=subset(data,select=-c(sex,smoker,region))
+##Overview of Data#####
+str(Data1)
+summary(Data1)
+##MLR fit using all obs###
+reg=lm(charges~age+male+bmi+children+smoker+southwest+southeast+northwest,data=Data1)
+summary(reg)
+plot(reg)
+predicted=predict(reg,data=Data1)
+plot(Data1$charges,predicted,xlab="Observed",ylab="Predicted",main="Observed vs. Predicted",col="pink",type = "o",pch = 20)
+abline(0,1,col="black",lwd=3)
+###Partial Residual Plot##EDA
+crPlots(lm(charges~age+male+bmi+children+smoker+southwest+southeast+northwest,data=Data1))
+###outlier treatment##
+library(dplyr)
+model_1=lm(charges~.,data=Data1)
+summary(model_1)
+cooks_dis=cooks.distance(model_1)
+influential=as.numeric(names(cooks_dis)[(cooks_dis > (4/1338))])
+Data3=Data1[-influential,]
+sample_size=1338
+#plot cook’s distance
+plot(cooks_dis, pch="*",cex=2, main="Influential Observations by Cooks Distance")
+#add cutoff line
+abline(h = 4/sample_size, col="red")  
+text(x=1:length(cooks_dis)+1, y=cooks_dis,labels=ifelse(cooks_dis>4/sample_size,names(cooks_dis),""),col="red")
+####Training and Test Set division### ##80-20 division##
+library(caret)
+set.seed(42)
+n_train=round(0.8*nrow(Data3)) 
+n_train
+train_indices=sample(1:nrow(Data3),n_train)
+train_data=Data3[train_indices, ]
+Data2=Data3[train_indices,]
+Data_test=Data3[-train_indices,]
+Data_test
+Data_train=Data2
+###Model fitting on training data##
+library(car)
+model_2=lm(charges~.,data=Data_train)
+summary(model_2)
+vif(model_2)  ##checked multicolinearity##
+####model assumptions checking###
+durbinWatsonTest(model_2,alternative = "two.sided")
+qqnorm(model_2$residuals,col="green")
+qqline(model_2$residuals,lwd=2)
+shapiro.test(model_2$residuals)
+library(lmtest)
+bptest(model_2)
+###residual plot##
+plot(model_2$residuals,col="blue")
+###residual vs fitted##
+plot(model_2,col="blue")
+#plot1=plot(model_2,which=1,col="red")
+#plot2=plot(model_2,which=2,col="red")
+library(ggpubr)
+library(ggplot2)
+library(gridExtra)
+resid_age=ggplot(aes(x=Data_train$age,y=rstudent(model_2)),data=model_2)+geom_point()+
+geom_smooth(se=FALSE)+geom_hline(yintercept = 0)+labs(x="age",y="residuals")
+resid_bmi=ggplot(aes(x=Data_train$bmi,y=rstudent(model_2)),data=model_2)+geom_point()+
+  geom_smooth(se=FALSE)+geom_hline(yintercept = 0)+labs(x="bmi",y="residuals")
+resid_children=ggplot(aes(x=Data_train$children,y=rstudent(model_2)),data=model_2)+geom_point()+
+  geom_smooth(se=FALSE)+geom_hline(yintercept = 0)+labs(x="children",y="residuals")
+grid.arrange(resid_age,resid_bmi,resid_children,ncol=2)
+
+##############splitting according to criteria###
+Data2_smokes=Data2[Data2$smokes==1,]
+nrow(Data2_smokes)
+Data2_non_smokes=Data2[Data2$smokes==0,]
+nrow(Data2_non_smokes)
+Data2_smokes_highbmi=Data2_smokes[Data2_smokes$bmi>29.9,]
+nrow(Data2_smokes_highbmi)
+Data2_smokes_lowbmi=Data2_smokes[Data2_smokes$bmi<=29.9,] 
+nrow(Data2_smokes_lowbmi)
+library(GGally)
+library(ggthemes)
+ggpairs(Data2_smokes_highbmi[,c("age","bmi","children","charges")],columns = 1:4, ggplot2::aes(colour="red")) + theme_solarized_2()
+ggpairs(Data2_smokes_lowbmi[,c("age","bmi","children","charges")],columns = 1:4, ggplot2::aes(colour="red")) + theme_solarized_2()
+ggpairs(Data2_non_smokes[,c("age","bmi","children","charges")],columns = 1:4, ggplot2::aes(colour="red")) + theme_solarized_2()
+###model fit with person who smokes with high bmi###
+m2=lm(charges~age + male + bmi + children +southwest+southeast+northwest,data=Data2_smokes_highbmi)
+summary(m2)
+residuals1=resid(m2)
+fitted_values=fitted(m2)
+plot(fitted_values, residuals1, main = "Residuals vs. Fitted", xlab = "Fitted Values", ylab = "Residuals",col="blue")
+abline(h = 0, col = "red")
+qqnorm(m2$residuals)
+qqline(m2$residuals,col="red")
+###model fit with person who smokes with low bmi###
+m3=lm(charges~age + bmi + children+southeast+northwest,data=Data2_smokes_lowbmi) 
+summary(m3)
+qqnorm(m3$residuals,col="red")
+residual3=resid(m3)
+fitted_values3=fitted(m3)
+plot(fitted_values3, residual3, main = "Residuals vs. Fitted", xlab = "Fitted Values", ylab = "Residuals",col="blue")
+abline(h = 0, col = "red")
+stepAIC(m3)
+plot(m3$residuals)
+##model fit with person who don't smokes##
+m4=lm(charges~age + male +bmi + children +southwest+southeast+northwest,data=Data2_non_smokes) 
+summary(m4)
+plot(m4)
+residual6=resid(m4)
+fitted_values6=fitted(m4)
+plot(fitted_values6, residual6, main = "Residuals vs. Fitted", xlab = "Fitted Values", ylab = "Residuals",col="blue")
+abline(h = 0, col = "red")
+ols_step_best_subset(m4)
+
+#summary(aov(m2))
+#summary(aov(m3))
+#summary(aov(m4))
+###Model selection using AIC###
+library(MASS)
+stepAIC(m2,direction="both")
+stepAIC(m3,direction = "both")
+stepAIC(m4,direction = "both")
+###fitting after aic###
+m5=lm(charges~age+bmi+children+southwest+southeast,data=Data2_smokes_highbmi)
+summary(m5)
+durbinWatsonTest(m5)
+qqline(m5$residuals,col="black")
+qqnorm(m5$residuals,col="red")
+residuals2=resid(m5)
+fitted_values2=fitted(m5)
+plot(fitted_values2, residuals2, main = "Residuals vs. Fitted",xlab = "Fitted Values", ylab = "Residuals",col="blue")
+abline(h = 0, col = "red")
+##################
+m6=lm(charges~age+children+southeast+northwest,data=Data2_smokes_lowbmi)
+summary(m6)
+durbinWatsonTest(m6$residuals)
+qqline(m6$residuals,col="black",lwd=2)
+qqnorm(m6$residuals,col="red")
+residuals3=resid(m6)
+fitted_values5=fitted(m6)
+plot(fitted_values5, residuals3, main = "Residuals vs. Fitted",xlab = "Fitted Values", ylab = "Residuals",col="blue")
+abline(h = 0, col = "red")
+plot(m6)
+####################
+m7=m5=lm(charges~age +male+children+southwest+southeast+northwest,data=Data2_non_smokes)
+summary(m7)
+plot(m5,which=1,col=c("blue")) 
+plot(m5,which=2,col=c("red")) 
+plot(m5,which=3,col=c("orange")) 
+plot(m5,which=5,col=c("green"))
+plot(m6,which=1,col=c("blue")) 
+plot(m6,which=2,col=c("red")) 
+plot(m6,which=3,col=c("orange")) 
+plot(m6,which=5,col=c("green"))
+plot(m7,which=1,col=c("blue")) 
+plot(m7,which=2,col=c("red")) 
+plot(m7,which=3,col=c("orange"))
+#####Testing for normality for the models##
+durbinWatsonTest(m5)
+durbinWatsonTest(m6)
+durbinWatsonTest(m7)
+library(lmtest)
+bptest(m5)
+bptest(m6)
+bptest(m7)
+library(olsrr)
+ols_plot_resid_hist(m5)
+ols_plot_resid_hist(m6)
+ols_plot_resid_hist(m7)
+#######TEST DATA CHECKING#####
+Data_smoker_test=Data_test[Data_test$smokes==1,]
+nrow(Data_smoker_test)
+Data_nonsmoker_test=Data_test[Data_test$smokes==0,]
+nrow(Data_nonsmoker_test)
+Data_smoker_highbmi_test=Data_smoker_test[Data_smoker_test$bmi>29.9,] 
+nrow(Data_smoker_highbmi_test)
+Data_smoker_lowbmi_test=Data_smoker_test[Data_smoker_test$bmi<=29.9,]
+nrow(Data_smoker_lowbmi_test)
+###Final prediction####
+library(ggplot2)
+predicted1=predict(m5,Data_smoker_highbmi_test)
+ggplot(data=Data_smoker_highbmi_test,aes(x=charges,y=predicted1))+geom_point()+geom_abline(slope=1,intercept=0)
+predicted2=predict(m6,Data_smoker_lowbmi_test) 
+ggplot(data=Data_smoker_lowbmi_test,aes(x=charges,y=predicted2))+geom_point()+geom_abline(slope=1,intercept=0)
+predicted3=predict(m7,Data_nonsmoker_test) 
+ggplot(data=Data_nonsmoker_test,aes(x=charges,y=predicted3))+geom_point()+geom_abline(slope=1,intercept=0)
+
+
+
+
+
+
+
+
+
+
+
+
+
